@@ -1,5 +1,10 @@
-import mysql, { type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from "mysql2/promise";
-import { getMysqlConfig } from "./env";
+import mysql, {
+  type Pool,
+  type PoolConnection,
+  type ResultSetHeader,
+  type RowDataPacket,
+} from "mysql2/promise";
+import { getMysqlConfig, isVercelRuntime } from "./env";
 
 const globalForMysql = globalThis as unknown as {
   __olwMysqlPool?: Pool;
@@ -14,11 +19,13 @@ export function getDbPool(): Pool {
       user: cfg.user,
       password: cfg.password,
       database: cfg.database,
+      ssl: cfg.useSsl ? { minVersion: "TLSv1.2", rejectUnauthorized: false } : undefined,
       waitForConnections: true,
-      connectionLimit: 10,
+      connectionLimit: isVercelRuntime() ? 5 : 10,
       queueLimit: 0,
       charset: "utf8mb4",
       dateStrings: true,
+      enableKeepAlive: true,
     });
   }
   return globalForMysql.__olwMysqlPool;
@@ -79,6 +86,8 @@ export async function checkMysqlHealth(): Promise<{
   connected: boolean;
   database: string;
   tableCount: number;
+  host: string;
+  ssl: boolean;
   error?: string;
 }> {
   const cfg = getMysqlConfig();
@@ -91,13 +100,17 @@ export async function checkMysqlHealth(): Promise<{
       connected: true,
       database: cfg.database,
       tableCount: Number(row?.total ?? 0),
+      host: cfg.host === "127.0.0.1" || cfg.host === "localhost" ? "localhost (XAMPP)" : "Cloud MySQL",
+      ssl: cfg.useSsl,
     };
   } catch (err) {
     return {
       connected: false,
       database: cfg.database,
       tableCount: 0,
-      error: err instanceof Error ? err.message : "Tidak dapat terhubung ke MySQL XAMPP.",
+      host: cfg.host === "127.0.0.1" || cfg.host === "localhost" ? "localhost (XAMPP)" : "Cloud MySQL",
+      ssl: cfg.useSsl,
+      error: err instanceof Error ? err.message : "Tidak dapat terhubung ke database MySQL.",
     };
   }
 }

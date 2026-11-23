@@ -1,6 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import { getStorageDriver, isVercelRuntime } from "@/lib/db/env";
+import { execSql, queryOne } from "@/lib/db/mysql";
 import type { StorageBucketName } from "@/types/database";
 
 export const VALID_BUCKETS: StorageBucketName[] = [
@@ -73,9 +75,14 @@ export function validateStorageFile(
   if (!rule.allowedMimeTypes.includes(file.type)) {
     return `Format file tidak didukung untuk ${rule.label}.`;
   }
-  if (file.size > rule.maxBytes) {
-    const maxMb = Math.round(rule.maxBytes / (1024 * 1024));
-    return `Ukuran file terlalu besar. Maksimal ${maxMb} MB.`;
+  const effectiveLimit = isVercelRuntime()
+    ? Math.min(rule.maxBytes, 4 * 1024 * 1024)
+    : rule.maxBytes;
+  if (file.size > effectiveLimit) {
+    const maxMb = Number((effectiveLimit / (1024 * 1024)).toFixed(1));
+    return `Ukuran file terlalu besar. Maksimal ${maxMb} MB${
+      isVercelRuntime() ? " pada mode Vercel serverless" : ""
+    }.`;
   }
   return null;
 }
@@ -100,16 +107,44 @@ export function resolveSafeStoragePath(
   return full;
 }
 
+/**
+ * Hybrid Private Media Saver:
+ * - On Vercel / STORAGE_DRIVER=database -> stores directly into MySQL `media_files` (LONGBLOB)
+ *   so media persists permanently across serverless cold starts and is accessible globally!
+ * - On local XAMPP -> writes to private `storage/uploads/` directory.
+ */
 export async function saveLocalStorageFile(
   bucket: StorageBucketName,
   ownerScopeId: string,
   originalFileName: string,
-  buffer: Buffer
+  buffer: Buffer,
+  options?: { uploadedBy?: string; mimeType?: string }
 ): Promise<string> {
   const extMatch = originalFileName.toLowerCase().match(/\.([a-z0-9]{2,5})$/);
   const ext = extMatch ? extMatch[1] : "bin";
   const safeScope = ownerScopeId.replace(/[^a-zA-Z0-9-]/g, "");
   const relativePath = `${safeScope}/${crypto.randomUUID()}.${ext}`;
+
+  const driver = getStorageDriver();
+  if (driver === "database" && options?.uploadedBy) {
+    const mime = options.mimeType || getMimeFromPath(relativePath);
+    await execSql(
+      `INSERT INTO media_files (id, bucket, object_path, owner_scope_id, uploaded_by, mime_type, size_bytes, content)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        crypto.randomUUID(),
+        bucket,
+        relativePath,
+        safeScope,
+        options.uploadedBy,
+        mime,
+        buffer.length,
+        buffer,
+      ]
+    );
+    return relativePath;
+  }
+
   const fullPath = resolveSafeStoragePath(bucket, relativePath);
   if (!fullPath) {
     throw new Error("Path penyimpanan tidak valid.");
@@ -119,17 +154,61 @@ export async function saveLocalStorageFile(
   return relativePath;
 }
 
+/**
+ * Hybrid Private Media Reader: checks MySQL `media_files` first (for Vercel/cloud),
+ * then transparently falls back to local disk `storage/uploads/` (for XAMPP).
+ */
+export async function readPrivateStorageFile(
+  bucket: StorageBucketName,
+  objectPath: string
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const normalized = objectPath.replace(/\\/g, "/").replace(/^\/+/, "");
+
+  // 1. Check MySQL `media_files` table (Vercel / cloud mode)
+  try {
+    const dbRow = await queryOne<{ content: Buffer; mime_type: string }>(
+      "SELECT content, mime_type FROM media_files WHERE bucket = ? AND object_path = ? LIMIT 1",
+      [bucket, normalized]
+    );
+    if (dbRow?.content) {
+      return {
+        buffer: Buffer.isBuffer(dbRow.content) ? dbRow.content : Buffer.from(dbRow.content),
+        mimeType: dbRow.mime_type || getMimeFromPath(normalized),
+      };
+    }
+  } catch {
+    // Fallback to disk if media_files lookup fails
+  }
+
+  // 2. Fallback to local disk (XAMPP local mode)
+  const fullPath = resolveSafeStoragePath(bucket, normalized);
+  if (!fullPath) return null;
+  try {
+    const buffer = await fs.readFile(fullPath);
+    return { buffer, mimeType: getMimeFromPath(normalized) };
+  } catch {
+    return null;
+  }
+}
+
 export async function deleteLocalStorageFile(
   bucket: StorageBucketName,
   objectPath: string | null | undefined
 ): Promise<void> {
   if (!objectPath) return;
-  const fullPath = resolveSafeStoragePath(bucket, objectPath);
+  const normalized = objectPath.replace(/\\/g, "/").replace(/^\/+/, "");
+
+  await execSql("DELETE FROM media_files WHERE bucket = ? AND object_path = ?", [
+    bucket,
+    normalized,
+  ]).catch(() => null);
+
+  const fullPath = resolveSafeStoragePath(bucket, normalized);
   if (!fullPath) return;
   try {
     await fs.unlink(fullPath);
   } catch {
-    // ignore missing file
+    // ignore missing disk file
   }
 }
 

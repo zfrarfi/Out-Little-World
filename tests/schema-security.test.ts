@@ -32,6 +32,8 @@ const REQUIRED_TABLES = [
   "virtual_hugs",
   "ai_conversations",
   "ai_messages",
+  "media_files",
+  "couple_presence",
 ];
 
 function walkFiles(dir: string): string[] {
@@ -50,7 +52,7 @@ function walkFiles(dir: string): string[] {
 describe("XAMPP MySQL Schema & Security Audit", () => {
   const sql = fs.readFileSync(MYSQL_SQL_PATH, "utf-8");
 
-  it("defines all 26 required InnoDB utf8mb4 tables for phpMyAdmin", () => {
+  it("defines all 28 required InnoDB utf8mb4 tables for phpMyAdmin & Cloud MySQL", () => {
     expect(sql).toContain("CREATE DATABASE IF NOT EXISTS `our_little_world`");
     expect(sql).toContain("utf8mb4_unicode_ci");
     for (const tbl of REQUIRED_TABLES) {

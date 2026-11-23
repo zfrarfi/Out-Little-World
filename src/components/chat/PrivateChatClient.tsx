@@ -133,7 +133,36 @@ export function PrivateChatClient({
     source.addEventListener("typing", onTyping as EventListener);
     source.addEventListener("presence", onPresence as EventListener);
 
+    // Serverless-compatible MySQL sync (guarantees realtime delivery on Vercel too)
+    const syncTimer = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch("/api/realtime/sync?scope=chat", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          messages?: ChatMessageWithUrl[];
+          partnerOnline?: boolean;
+          partnerTyping?: boolean;
+        };
+        if (Array.isArray(data.messages)) {
+          setMessages(data.messages);
+          if (data.messages.some((m) => m.sender_id !== currentUserId && m.status !== "read")) {
+            markChatMessagesReadAction();
+          }
+        }
+        if (showOnlineStatus && typeof data.partnerOnline === "boolean") {
+          setPartnerOnline(data.partnerOnline);
+        }
+        if (typeof data.partnerTyping === "boolean") {
+          setPartnerTyping(data.partnerTyping);
+        }
+      } catch {
+        // ignore transient error
+      }
+    }, 2500);
+
     return () => {
+      clearInterval(syncTimer);
       source.close();
     };
   }, [currentUserId, showOnlineStatus]);

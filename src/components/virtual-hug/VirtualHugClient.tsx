@@ -46,10 +46,12 @@ export function VirtualHugClient({
   }
 
   useEffect(() => {
+    const knownIds = new Set(initialHugs.map((h) => h.id));
     const source = new EventSource("/api/realtime/stream");
     const onHug = (evt: MessageEvent) => {
       try {
         const incoming = JSON.parse(evt.data) as VirtualHugRow;
+        knownIds.add(incoming.id);
         setHugs((prev) => (prev.some((h) => h.id === incoming.id) ? prev : [incoming, ...prev]));
         if (incoming.sender_id !== currentUserId) {
           triggerHugAnimation(`${partnerNickname}: "${incoming.message}"`);
@@ -64,10 +66,34 @@ export function VirtualHugClient({
       }
     };
     source.addEventListener("virtual_hug", onHug as EventListener);
+
+    const timer = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch("/api/realtime/sync?scope=hugs", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { hugs?: VirtualHugRow[] };
+        if (!Array.isArray(data.hugs)) return;
+        for (const h of data.hugs) {
+          if (!knownIds.has(h.id)) {
+            knownIds.add(h.id);
+            if (h.sender_id !== currentUserId) {
+              triggerHugAnimation(`${partnerNickname}: "${h.message}"`);
+            }
+          }
+        }
+        setHugs(data.hugs);
+      } catch {
+        // ignore
+      }
+    }, 4000);
+
     return () => {
+      clearInterval(timer);
       source.removeEventListener("virtual_hug", onHug as EventListener);
       source.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coupleId, currentUserId, partnerNickname, showToast]);
 
   async function handleSendHug(e: React.FormEvent) {

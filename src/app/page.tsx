@@ -113,9 +113,9 @@ export default async function LandingPage() {
           <div className="mt-6 rounded-3xl border border-emerald-200 bg-emerald-50/85 px-5 py-3 text-xs text-emerald-800 flex items-center gap-2">
             <Database className="h-4 w-4 text-emerald-600 shrink-0" />
             <span>
-              Terhubung ke <strong>MySQL XAMPP</strong> (database{" "}
+              Terhubung ke <strong>MySQL ({dbHealth.host})</strong> — database{" "}
               <code className="font-semibold">{dbHealth.database}</code> &bull; {dbHealth.tableCount}{" "}
-              tabel siap digunakan).
+              tabel siap digunakan.
             </span>
           </div>
         )}

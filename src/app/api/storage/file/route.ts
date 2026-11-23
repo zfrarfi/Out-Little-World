@@ -1,12 +1,7 @@
-import fs from "fs/promises";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionUser } from "@/lib/auth/cookie";
 import { queryOne, queryRows } from "@/lib/db/mysql";
-import {
-  getMimeFromPath,
-  isValidBucket,
-  resolveSafeStoragePath,
-} from "@/lib/storage/local";
+import { isValidBucket, readPrivateStorageFile } from "@/lib/storage/local";
 
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
@@ -27,7 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Path tidak valid." }, { status: 400 });
   }
 
-  // Strict authorization check (equivalent to Supabase Storage RLS)
+  // Strict authorization check per Couple Space
   const member = await queryOne<{ couple_id: string }>(
     "SELECT couple_id FROM couple_members WHERE user_id = ? LIMIT 1",
     [user.id]
@@ -52,45 +47,42 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Akses media ditolak." }, { status: 403 });
   }
 
-  const fullPath = resolveSafeStoragePath(bucketRaw, objectPath);
-  if (!fullPath) {
-    return NextResponse.json({ error: "Path file tidak diizinkan." }, { status: 400 });
-  }
-
-  try {
-    const fileBuf = await fs.readFile(fullPath);
-    const mime = getMimeFromPath(objectPath);
-    const rangeHeader = request.headers.get("range");
-
-    if (rangeHeader) {
-      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-      if (match) {
-        const start = parseInt(match[1], 10);
-        const end = match[2] ? Math.min(parseInt(match[2], 10), fileBuf.length - 1) : fileBuf.length - 1;
-        const chunk = fileBuf.subarray(start, end + 1);
-        return new NextResponse(new Uint8Array(chunk), {
-          status: 206,
-          headers: {
-            "Content-Type": mime,
-            "Content-Range": `bytes ${start}-${end}/${fileBuf.length}`,
-            "Accept-Ranges": "bytes",
-            "Content-Length": String(chunk.length),
-            "Cache-Control": "private, max-age=300",
-          },
-        });
-      }
-    }
-
-    return new NextResponse(new Uint8Array(fileBuf), {
-      status: 200,
-      headers: {
-        "Content-Type": mime,
-        "Content-Length": String(fileBuf.length),
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "private, max-age=300",
-      },
-    });
-  } catch {
+  const found = await readPrivateStorageFile(bucketRaw, objectPath);
+  if (!found) {
     return NextResponse.json({ error: "File media tidak ditemukan." }, { status: 404 });
   }
+
+  const { buffer: fileBuf, mimeType: mime } = found;
+  const rangeHeader = request.headers.get("range");
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = match[2]
+        ? Math.min(parseInt(match[2], 10), fileBuf.length - 1)
+        : fileBuf.length - 1;
+      const chunk = fileBuf.subarray(start, end + 1);
+      return new NextResponse(new Uint8Array(chunk), {
+        status: 206,
+        headers: {
+          "Content-Type": mime,
+          "Content-Range": `bytes ${start}-${end}/${fileBuf.length}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": String(chunk.length),
+          "Cache-Control": "private, max-age=300",
+        },
+      });
+    }
+  }
+
+  return new NextResponse(new Uint8Array(fileBuf), {
+    status: 200,
+    headers: {
+      "Content-Type": mime,
+      "Content-Length": String(fileBuf.length),
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "private, max-age=300",
+    },
+  });
 }

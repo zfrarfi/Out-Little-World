@@ -64,7 +64,8 @@ export async function POST(request: NextRequest) {
       bucketRaw,
       scopeId,
       file.name,
-      Buffer.from(arrayBuffer)
+      Buffer.from(arrayBuffer),
+      { uploadedBy: user.id, mimeType: file.type }
     );
     const mediaType: "photo" | "video" = file.type.startsWith("video/") ? "video" : "photo";
     const signedUrl = getPrivateMediaUrl(bucketRaw, savedPath);

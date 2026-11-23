@@ -43,30 +43,61 @@ export function NotificationBell({
   const unreadCount = items.filter((n) => !n.is_read).length;
 
   useEffect(() => {
-    const source = new EventSource("/api/realtime/stream");
-    const onNotification = (evt: MessageEvent) => {
-      try {
-        const incoming = JSON.parse(evt.data) as NotificationRow;
-        if (incoming.recipient_id !== userId) return;
-        setItems((prev) => {
-          if (prev.some((n) => n.id === incoming.id)) return prev;
-          return [incoming, ...prev.slice(0, 29)];
-        });
-        showToast({
-          type: "info",
-          title: incoming.title,
-          description: incoming.body,
-        });
-      } catch {
-        // ignore malformed event
-      }
-    };
+    const knownIds = new Set(initialNotifications.map((n) => n.id));
+    let source: EventSource | null = null;
+    try {
+      source = new EventSource("/api/realtime/stream");
+      const onNotification = (evt: MessageEvent) => {
+        try {
+          const incoming = JSON.parse(evt.data) as NotificationRow;
+          if (incoming.recipient_id !== userId) return;
+          if (!knownIds.has(incoming.id)) {
+            knownIds.add(incoming.id);
+            showToast({
+              type: "info",
+              title: incoming.title,
+              description: incoming.body,
+            });
+          }
+          setItems((prev) =>
+            prev.some((n) => n.id === incoming.id) ? prev : [incoming, ...prev.slice(0, 29)]
+          );
+        } catch {
+          // ignore
+        }
+      };
+      source.addEventListener("notification", onNotification as EventListener);
+    } catch {
+      // SSE unavailable in some serverless environments; polling fallback handles it
+    }
 
-    source.addEventListener("notification", onNotification as EventListener);
+    // Serverless-compatible MySQL sync (works across Vercel instances)
+    const timer = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch("/api/realtime/sync?scope=notifications", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { notifications?: NotificationRow[] };
+        if (!Array.isArray(data.notifications)) return;
+        for (const n of data.notifications) {
+          if (!knownIds.has(n.id) && !n.is_read) {
+            knownIds.add(n.id);
+            showToast({ type: "info", title: n.title, description: n.body });
+          } else {
+            knownIds.add(n.id);
+          }
+        }
+        setItems(data.notifications);
+      } catch {
+        // ignore transient network blip
+      }
+    }, 5000);
+
     return () => {
-      source.removeEventListener("notification", onNotification as EventListener);
-      source.close();
+      clearInterval(timer);
+      source?.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, showToast]);
 
   async function handleReadOne(id: string) {

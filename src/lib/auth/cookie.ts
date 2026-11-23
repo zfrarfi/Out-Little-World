@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { getAppUrl, isVercelRuntime } from "@/lib/db/env";
 import { execSql, queryOne, toMysqlDatetime } from "@/lib/db/mysql";
 import { generateSecureToken, generateUuid, sha256Hex } from "./crypto";
 
@@ -20,11 +21,12 @@ export async function createSessionForUser(userId: string): Promise<void> {
     [generateUuid(), userId, tokenHash, toMysqlDatetime(expires)]
   );
 
+  const isSecureContext = isVercelRuntime() || getAppUrl().startsWith("https://");
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, rawToken, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecureContext,
     path: "/",
     expires,
   });

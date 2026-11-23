@@ -560,4 +560,37 @@ CREATE TABLE IF NOT EXISTS `ai_messages` (
   CONSTRAINT `fk_ai_msg_conv` FOREIGN KEY (`conversation_id`) REFERENCES `ai_conversations` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------------------------------------------------------
+-- 27. media_files (Penyimpanan Media Privat Serverless-Ready untuk Vercel & Cloud)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `media_files` (
+  `id` CHAR(36) NOT NULL,
+  `bucket` VARCHAR(40) NOT NULL,
+  `object_path` VARCHAR(500) NOT NULL,
+  `owner_scope_id` CHAR(36) NOT NULL,
+  `uploaded_by` CHAR(36) NOT NULL,
+  `mime_type` VARCHAR(100) NOT NULL,
+  `size_bytes` INT NOT NULL,
+  `content` LONGBLOB NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_media_bucket_path` (`bucket`, `object_path`(191)),
+  KEY `idx_media_scope` (`owner_scope_id`),
+  CONSTRAINT `fk_media_uploader` FOREIGN KEY (`uploaded_by`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- 28. couple_presence (Status Online & Typing Indicator Lintas Server / Vercel)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `couple_presence` (
+  `user_id` CHAR(36) NOT NULL,
+  `couple_id` CHAR(36) NOT NULL,
+  `last_seen_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `typing_until` DATETIME NULL,
+  PRIMARY KEY (`user_id`),
+  KEY `idx_presence_couple` (`couple_id`, `last_seen_at`),
+  CONSTRAINT `fk_presence_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_presence_space` FOREIGN KEY (`couple_id`) REFERENCES `couple_spaces` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

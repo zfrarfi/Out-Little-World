@@ -44,7 +44,21 @@ export function GardenClient({
       }
     };
     source.addEventListener("love_garden", onGarden as EventListener);
+
+    const timer = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch("/api/realtime/sync?scope=garden", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { garden?: LoveGardenRow | null };
+        if (data.garden) setGarden(data.garden);
+      } catch {
+        // ignore
+      }
+    }, 5000);
+
     return () => {
+      clearInterval(timer);
       source.removeEventListener("love_garden", onGarden as EventListener);
       source.close();
     };
