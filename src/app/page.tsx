@@ -21,6 +21,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/cookie";
+import { isVercelRuntime } from "@/lib/db/env";
+import { ensureDatabaseSchema } from "@/lib/db/auto-init";
 import { checkMysqlHealth } from "@/lib/db/mysql";
 import { FloatingHearts } from "@/components/animations/FloatingHearts";
 
@@ -44,12 +46,16 @@ const FEATURE_SHOWCASE = [
 ];
 
 export default async function LandingPage() {
+  // Auto-initialize all 28 tables when connected to a fresh Cloud MySQL or XAMPP database
+  await ensureDatabaseSchema();
+
   const user = await getSessionUser();
   if (user) {
     redirect("/dashboard");
   }
 
   const dbHealth = await checkMysqlHealth();
+  const onVercel = isVercelRuntime();
 
   return (
     <div className="relative min-h-screen overflow-hidden romantic-bg">
@@ -85,27 +91,49 @@ export default async function LandingPage() {
           </div>
         </header>
 
-        {/* Live XAMPP MySQL Status Banner */}
+        {/* Live Database Status Banner (Vercel Cloud vs Local XAMPP aware) */}
         {!dbHealth.connected ? (
-          <div className="mt-6 rounded-3xl border border-amber-300 bg-amber-50/90 p-5 shadow-soft">
+          <div className="mt-6 rounded-3xl border border-amber-300 bg-amber-50/95 p-5 shadow-soft">
             <div className="flex items-start gap-3.5">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-              <div className="space-y-1 text-sm">
-                <p className="font-semibold text-amber-900">
-                  MySQL XAMPP Belum Aktif atau Database Belum Di-import
-                </p>
-                <p className="text-amber-800/90 leading-relaxed">
-                  Buka <strong>XAMPP Control Panel</strong>, klik <strong>Start</strong> pada{" "}
-                  <strong>MySQL</strong> (dan Apache untuk membuka phpMyAdmin), lalu jalankan{" "}
-                  <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold">
-                    npm run db:init
-                  </code>{" "}
-                  atau import{" "}
-                  <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold">
-                    database/our_little_world_mysql.sql
-                  </code>{" "}
-                  di phpMyAdmin.
-                </p>
+              <div className="space-y-1.5 text-sm">
+                {onVercel ? (
+                  <>
+                    <p className="font-semibold text-amber-900">
+                      Database Cloud MySQL Belum Dihubungkan di Vercel
+                    </p>
+                    <p className="text-amber-800/95 leading-relaxed">
+                      Server Vercel tidak dapat mengakses XAMPP di laptop. Buat database MySQL Cloud
+                      gratis di <strong>TiDB Cloud</strong> (<code>tidbcloud.com</code>) atau{" "}
+                      <strong>Aiven</strong>, lalu tambahkan Environment Variable{" "}
+                      <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold">
+                        DATABASE_URL
+                      </code>{" "}
+                      dan{" "}
+                      <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold">
+                        AUTH_SESSION_SECRET
+                      </code>{" "}
+                      di <strong>Vercel → Settings → Environment Variables</strong> lalu{" "}
+                      <strong>Redeploy</strong>. Seluruh 28 tabel akan dibuat otomatis!
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-amber-900">
+                      MySQL XAMPP Belum Aktif atau Database Belum Terhubung
+                    </p>
+                    <p className="text-amber-800/95 leading-relaxed">
+                      Buka <strong>XAMPP Control Panel</strong>, klik <strong>Start</strong> pada{" "}
+                      <strong>MySQL</strong> (dan Apache untuk phpMyAdmin), lalu refresh halaman ini
+                      (seluruh 28 tabel otomatis terbuat).
+                    </p>
+                  </>
+                )}
+                {dbHealth.error && (
+                  <p className="text-xs text-amber-700/90 font-mono">
+                    Detail: {dbHealth.error}
+                  </p>
+                )}
               </div>
             </div>
           </div>

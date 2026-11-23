@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
+import { MYSQL_TABLE_STATEMENTS } from "@/lib/db/schema-sql";
 
 const ROOT = process.cwd();
 const MYSQL_SQL_PATH = path.join(ROOT, "database", "our_little_world_mysql.sql");
@@ -57,6 +58,12 @@ describe("XAMPP MySQL Schema & Security Audit", () => {
     expect(sql).toContain("utf8mb4_unicode_ci");
     for (const tbl of REQUIRED_TABLES) {
       expect(sql).toContain(`CREATE TABLE IF NOT EXISTS \`${tbl}\``);
+    }
+    expect(MYSQL_TABLE_STATEMENTS).toHaveLength(REQUIRED_TABLES.length);
+    for (const tbl of REQUIRED_TABLES) {
+      expect(
+        MYSQL_TABLE_STATEMENTS.some((s) => s.includes(`CREATE TABLE IF NOT EXISTS \`${tbl}\``))
+      ).toBe(true);
     }
   });
 

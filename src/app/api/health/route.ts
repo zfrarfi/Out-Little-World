@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { checkMysqlHealth } from "@/lib/db/mysql";
+import { ensureDatabaseSchema } from "@/lib/db/auto-init";
 import { getStorageDriver, isAiConfigured, isVercelRuntime } from "@/lib/db/env";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
+  // Automatically initialize all 28 tables on first connect to a fresh Cloud/XAMPP MySQL DB
+  await ensureDatabaseSchema();
   const mysql = await checkMysqlHealth();
 
   return NextResponse.json({

@@ -19,12 +19,8 @@ Pilih salah satu penyedia **MySQL Cloud Gratis** berikut:
 1. Daftar gratis di [https://tidbcloud.com](https://tidbcloud.com) (bisa login pakai akun GitHub/Google).
 2. Klik **Create Cluster** → pilih **Starter (Serverless — Free)** → pilih region terdekat (**Singapore**).
 3. Klik tombol **Connect** → pilih **General** → buat password → salin info koneksi (`Host`, `Port: 4000`, `User`, `Password`) atau `DATABASE_URL`.
-4. Buat database & 28 tabel:
-   - Buka **SQL Editor** di dashboard TiDB Cloud → copy-paste seluruh isi file `database/our_little_world_mysql.sql` → klik **Run**, **ATAU**
-   - Jalankan sekali dari Terminal VS Code:
-     ```bash
-     DATABASE_URL="mysql://USER:PASSWORD@HOST:4000/our_little_world" npm run db:init
-     ```
+4. **Tabel otomatis terbuat sendiri!** Kamu **tidak perlu** copy-paste SQL manual — saat website Vercel pertama kali dibuka (atau saat `/api/health` diakses), aplikasi otomatis membuat seluruh **28 tabel** di TiDB Cloud / Aiven / Railway!
+   *(Opsional jika ingin buat manual sebelumnya: import `database/our_little_world_mysql.sql` atau jalankan `DATABASE_URL="..." npm run db:init`.)*
 
 ### Opsi B — Aiven for MySQL (Gratis) / Railway MySQL
 1. Buat service MySQL baru di [https://aiven.io](https://aiven.io) atau [https://railway.app](https://railway.app).

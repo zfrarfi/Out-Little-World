@@ -22,6 +22,7 @@ import {
   toMysqlDatetime,
   withTransaction,
 } from "@/lib/db/mysql";
+import { ensureDatabaseSchema } from "@/lib/db/auto-init";
 import { publishUserNotification } from "@/lib/realtime/bus";
 import { loginSchema, onboardingSchema, registerSchema } from "@/lib/utils/validators";
 import type { ActionResult } from "@/types/domain";
@@ -128,6 +129,7 @@ export async function signInAction(input: {
   }
 
   try {
+    await ensureDatabaseSchema();
     const email = parsed.data.email.toLowerCase();
     const user = await queryOne<{ id: string; email: string; password_hash: string }>(
       "SELECT id, email, password_hash FROM users WHERE email = ? LIMIT 1",
@@ -180,6 +182,7 @@ export async function signUpAction(input: {
   }
 
   try {
+    await ensureDatabaseSchema();
     const email = parsed.data.email.toLowerCase();
     const existing = await queryOne<{ id: string }>(
       "SELECT id FROM users WHERE email = ? LIMIT 1",
